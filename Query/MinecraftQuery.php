@@ -38,7 +38,8 @@ class MinecraftQuery {
 		FClose( $this->Socket );
 		return true;
 	}
-public functiom isOnline()
+    
+public function isOnline()
 {
  $info = $this->GetInfo();
  if(!empty($info["HostPort"])){
