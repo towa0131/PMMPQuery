@@ -4,7 +4,7 @@
 $query = new MinecraftQuery();
 $query->connect("127.0.0.1",19132); if($query->isOnline())
 {
- $info = $query->GetInfo();
+ $info = $query->getInfo();
  print_r($info);
 }
 ```
