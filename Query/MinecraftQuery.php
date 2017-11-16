@@ -1,5 +1,7 @@
 <?php
  
+namespace Query;
+
 class MinecraftQuery{
 	
 	const STATISTIC = 0x00;
@@ -76,14 +78,16 @@ class MinecraftQuery{
 		$keys = [
 			"hostname"   => "HostName",
 			"gametype"   => "GameType",
+			"game_id"    => "GameName",
 			"version"    => "Version",
+			"server_engine" => "ServerEngine",
 			"plugins"    => "Plugins",
 			"map"        => "Map",
 			"numplayers" => "Players",
 			"maxplayers" => "MaxPlayers",
-			"hostport"   => "HostPort",
+			"whitelist" => "WhiteList",
 			"hostip"     => "HostIp",
-			"game_id"    => "GameName"
+			"hostport"   => "HostPort"
 		];
 		
 		foreach($data as $key => $value){

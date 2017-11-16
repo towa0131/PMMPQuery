@@ -2,7 +2,6 @@
 
 namespace Query;
 
-class MinecraftQueryException extends \Exception
-{
+class MinecraftQueryException extends \Exception{
 
 }
