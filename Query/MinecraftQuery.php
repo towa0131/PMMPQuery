@@ -111,13 +111,12 @@ class MinecraftQuery{
 			$data = explode( ": ",$info["Plugins"],2);
 			
 			$info["RawPlugins"] = $info["Plugins"];
-			$info["Software"] = $data[0];
 			
 			if(count($data) == 2){
 				$info["Plugins"] = explode("; ",$data[1]);
 			}
 		}else{
-			$info["Software"] = "Vanilla";
+			$info["ServerEngine"] = "Vanilla";
 		}
 		$this->Info = $info;
 		
