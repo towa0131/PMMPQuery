@@ -41,28 +41,29 @@ class MinecraftQuery{
 	}
 
 	public function getInfo(){
-		return $this->info ?? false;
+		return $this->info ?? null;
 	}
 
 	public function getPlayers(){
-		return $this->players ?? false;
+		return $this->players ?? null;
 	}
 	
 	public function isOnline(){
 		$info = $this->getInfo();
-		if(!empty($info["HostPort"])){
+		var_dump($info);
+		if($info !== null){
 			return true;
 		}
 		return false;
 	}
 
 	private function getChallenge(){
-		$data = $this->writeData(self :: HANDSHAKE);
+		$data = $this->writeData(self::HANDSHAKE);
 		return pack("N",$data);
 	}
 
 	private function getStatus($challenge){
-		$data = $this->writeData(self::STATISTIC,$challenge . pack("c*",0x00,0x00,0x00,0x00));
+		$data = $this->writeData(self::STATISTIC, $challenge . pack("c*",0x00,0x00,0x00,0x00));
 		$last = "";
 		$info = [];
 		$data = substr($data,11);
@@ -101,11 +102,11 @@ class MinecraftQuery{
 			}
 		}
 
-		$info["Players"] = IntVal($info["Players"]);
-		$info["MaxPlayers"] = IntVal($info["MaxPlayers"]);
-		$info["HostPort"] = IntVal($info["HostPort"]);
+		$info["Players"] = (int)$info["Players"];
+		$info["MaxPlayers"] = (int)$info["MaxPlayers"];
+		$info["HostPort"] = (int)$info["HostPort"];
 		if($info["Plugins"]){
-			$data = explode( ": ",$info["Plugins"], 2);
+			$data = explode(": ",$info["Plugins"], 2);
 			$info["RawPlugins"] = $info["Plugins"];
 			if(count($data) == 2){
 				$info["Plugins"] = explode("; ",$data[1]);
@@ -120,7 +121,7 @@ class MinecraftQuery{
 	}
 	
 	private function writeData($command, $append = ""){
-		$command = pack("c*",0xFE,0xFD,$command,0x01,0x02,0x03,0x04) . $append;
+		$command = pack("c*", 0xFE, 0xFD, $command, 0x01, 0x02, 0x03, 0x04) . $append;
 		$length  = strlen($command);
 		if($length !== fWrite($this->socket,$command,$length)){
 			throw new Exception("Failed to write on socket.");
@@ -128,7 +129,7 @@ class MinecraftQuery{
 
 		$data = fread($this->socket, 4096);
 
-		if($data === false){
+		if(!$data){
 			throw new Exception("Failed to read from socket.");
 		}
 
