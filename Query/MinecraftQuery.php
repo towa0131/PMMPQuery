@@ -50,7 +50,6 @@ class MinecraftQuery{
 	
 	public function isOnline(){
 		$info = $this->getInfo();
-		var_dump($info);
 		if($info !== null){
 			return true;
 		}
