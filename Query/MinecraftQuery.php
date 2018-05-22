@@ -33,10 +33,10 @@ class MinecraftQuery{
 			$challenge = $this->getChallenge();
 			$this->getStatus($challenge);
 		}catch(Exception $e){
+			
+		}finally{
 			fclose($this->socket);
 		}
-
-		fclose($this->socket);
 		return true;
 	}
 
