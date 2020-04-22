@@ -1,157 +1,135 @@
 <?php
- 
+
 namespace Query;
+
+use Query\MinecraftQueryException;
 
 class MinecraftQuery{
 
-	const STATISTIC = 0x00;
-	const HANDSHAKE = 0x09;
+	public const HANDSHAKE = 9;
+	public const STATISTICS = 0;
 
 	private $socket;
 	private $players;
 	private $info;
 
-	public function connect($ip, $port = 19132, $timeout = 3, $srv = true){
-		if(!is_int($timeout) || $timeout < 0){
-			throw new \InvalidArgumentException("Timeout must be an integer.");
-			return false;
-		}
-
-		if($srv){
-			$result = $this->resolveSRV($ip,$port);
-		}
-
+	public function connect(string $ip, int $port = 19132, int $timeout = 3){
 		$this->socket = @fsockopen("udp://" . $ip, $port, $errno, $errstr, $timeout);
 
 		if($errno || !$this->socket){
+			$this->players = $this->info = null;
 			return false;
 		}
 
-		stream_set_timeout($this->socket,$timeout);
-		stream_set_blocking($this->socket,true);
+		stream_set_timeout($this->socket, $timeout);
+		stream_set_blocking($this->socket, true);
+
 		try{
-			$challenge = $this->getChallenge();
-			$this->getStatus($challenge);
-		}catch(Exception $e){
-			
+			$result = $this->handshake();
+			$this->statistics($result);
+		}catch(MinecraftQueryException $ex){
+			echo $ex->getMessage() . PHP_EOL;
+			$this->players = $this->info = null;
 		}finally{
 			fclose($this->socket);
 		}
+
 		return true;
 	}
 
 	public function getInfo(){
-		return $this->info ?? null;
+		return $this->info ?? [];
 	}
 
 	public function getPlayers(){
-		return $this->players ?? null;
+		return $this->players ?? [];
 	}
-	
+
 	public function isOnline(){
-		$info = $this->getInfo();
-		if($info !== null){
+		if($this->info !== null){
 			return true;
 		}
 		return false;
 	}
 
-	private function getChallenge(){
+	private function handshake(){
 		$data = $this->writeData(self::HANDSHAKE);
-		return pack("N",$data);
+		return pack("N", $data);
 	}
 
-	private function getStatus($challenge){
-		$data = $this->writeData(self::STATISTIC, $challenge . pack("c*",0x00,0x00,0x00,0x00));
-		$last = "";
-		$info = [];
-		$data = substr($data,11);
-		$data = explode("\x00\x00\x01player_\x00\x00",$data);
-		if(!isset($data[1])){
-			return false;
-		}
-		$players = substr($data[1],0,-2);
-		$data = explode("\x00",$data[0]);
+	private function statistics($handshake){
+		$KVdata = [];
+		$payload = $this->writeData(self::STATISTICS, $handshake . pack("c*", 0x00, 0x00, 0x00, 0x00));
+		$payload = substr($payload, 11); // split num
+		$data = explode("\x00\x01player_\x00\x00", $payload);
 
-		$keys = [
-			"hostname"   => "HostName",
-			"gametype"   => "GameType",
-			"game_id"    => "GameName",
-			"version"    => "Version",
-			"server_engine" => "ServerEngine",
-			"plugins"    => "Plugins",
-			"map"        => "Map",
-			"numplayers" => "Players",
-			"maxplayers" => "MaxPlayers",
-			"whitelist" => "WhiteList",
-			"hostip"     => "HostIp",
-			"hostport"   => "HostPort"
-		];
+		$players = substr($data[1], 0, -2);
+		$data = explode("\x00", $data[0]);
 
-		foreach($data as $key => $value){
-			if(~$key & 1){
-				if(!array_key_exists($value,$keys)){
-					$last = false;
-					continue;
-				}
-				$last = $keys[$value];
-				$info[$last] = "";
-			}else if($last != false){
-				$info[$last] = mb_convert_encoding($value,"UTF-8");
+		for($i = 0; $i < count($data) - 1; $i++){
+			if($i & 1){
+				$KVdata[$data[$i - 1]] = $data[$i];
 			}
 		}
 
-		$info["Players"] = (int)$info["Players"];
-		$info["MaxPlayers"] = (int)$info["MaxPlayers"];
-		$info["HostPort"] = (int)$info["HostPort"];
-		if($info["Plugins"]){
-			$data = explode(": ",$info["Plugins"], 2);
-			$info["RawPlugins"] = $info["Plugins"];
+		$KVdata["numplayers"] = (int)$KVdata["numplayers"];
+		$KVdata["maxplayers"] = (int)$KVdata["maxplayers"];
+		$KVdata["hostport"] = (int)$KVdata["hostport"];
+
+		if($KVdata["plugins"]){
+			$data = explode(": ", $KVdata["plugins"], 2);
 			if(count($data) == 2){
-				$info["Plugins"] = explode("; ",$data[1]);
+				$KVdata["plugins"] = explode("; ", $data[1]);
+			}
+			for($i = 0; $i < count($KVdata["plugins"]); $i++){
+				list($name, $version) = explode(" ", $KVdata["plugins"][$i], 2);
+				unset($KVdata["plugins"][$i]);
+				$KVdata["plugins"][$i]["name"] = $name;
+				$KVdata["plugins"][$i]["version"] = $version;
 			}
 		}else{
-			$info["ServerEngine"] = "Vanilla";
+			$KVdata["server_engine"] = "Vanilla";
 		}
 
-		$this->info = $info;
+		$this->info = $KVdata;
 
-		$this->players = empty($players) ? null : explode("\x00",$players);
+		$this->players = empty($players) ? null : explode("\x00", $players);
 	}
-	
-	private function writeData($command, $append = ""){
-		$command = pack("c*", 0xFE, 0xFD, $command, 0x01, 0x02, 0x03, 0x04) . $append;
-		$length  = strlen($command);
-		if($length !== fWrite($this->socket,$command,$length)){
-			throw new Exception("Failed to write on socket.");
+
+	private function writeData($packetType, $token = ""){
+		$magic = pack("c*", 254, 253);
+		$sessionID = [0x01, 0x02, 0x03, 0x04];
+		$packet = $magic . chr($packetType);
+		foreach($sessionID as $id){
+			$packet .= pack("c*", $id);
+		}
+		$packet .= $token;
+
+		if(strlen($packet) !== fwrite($this->socket, $packet, strlen($packet))){
+			throw new MinecraftQueryException("Failed to write on socket.");
 		}
 
 		$data = fread($this->socket, 4096);
 
 		if(!$data){
-			throw new Exception("Failed to read from socket.");
+			throw new MinecraftQueryException("Failed to read from socket.");
 		}
 
-		if(strlen($data) < 5 || $data[0] != $command[2]){
-			return false;
+		$offset = 0;
+		if($data{$offset} != $packet{2}){ // Checking packet type
+			throw new MinecraftQueryException("Failed to verify packet: Type " . ord($data{$offset}) . " != " . ord($packet{2}));
 		}
 
-		return substr($data,5);
-	}
-
-	private function resolveSRV(&$address, &$port){
-		if(ip2long($address) !== false){
-			return;
+		$offset += 1;
+		$sid = unpack("c*", substr($data, $offset, 4));
+		for($i = 0; $i < count($sessionID); $i++){
+			if($sessionID[$i] != $sid[$i + 1]){ // Checking sessionID
+				throw new MinecraftQueryException("Failed to verify packet: SessionID " . $sessionID[$i] . " != " . $sid[$i + 1]);
+			}
 		}
 
-		$record = dns_get_record("_minecraft._tcp." . $address, DNS_SRV);
+		$offset += 4;
 
-		if(empty($record)){
-			return;
-		}
-
-		if(isset($record[0]["target"])){
-			$address = $record[0]["target"];
-		}
+		return substr($data, $offset);
 	}
 }
